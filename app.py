@@ -1,88 +1,182 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 from sklearn.cluster import KMeans
 
-# Konfigurasi halaman
-st.set_page_config(page_title="Mall Customer Analysis", layout="wide")
+# ==========================
+# CONFIG
+# ==========================
+st.set_page_config(
+    page_title="Mall Customer Dashboard",
+    page_icon="📊",
+    layout="wide"
+)
 
-st.title("📊 Analisis Data Mall Customers")
-st.write("Aplikasi Streamlit untuk analisis pelanggan mall.")
+# ==========================
+# LOAD DATA
+# ==========================
+@st.cache_data
+def load_data():
+    return pd.read_csv("Mall_Customers.csv")
 
-# Upload file
-uploaded_file = st.file_uploader("Upload Dataset Mall_Customers.csv", type=["csv"])
+df = load_data()
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
+# Rename kolom agar lebih rapi
+df.columns = [
+    "CustomerID",
+    "Gender",
+    "Age",
+    "Annual Income",
+    "Spending Score"
+]
 
-    # Menampilkan data
-    st.subheader("Dataset")
-    st.dataframe(df)
+# ==========================
+# SIDEBAR
+# ==========================
+st.sidebar.title("🎛 Dashboard Filter")
 
-    # Informasi dataset
-    st.subheader("Informasi Dataset")
-    col1, col2 = st.columns(2)
+gender = st.sidebar.multiselect(
+    "Pilih Gender",
+    options=df["Gender"].unique(),
+    default=df["Gender"].unique()
+)
 
-    with col1:
-        st.write("Jumlah Data:", df.shape[0])
-        st.write("Jumlah Kolom:", df.shape[1])
+age_range = st.sidebar.slider(
+    "Rentang Umur",
+    int(df["Age"].min()),
+    int(df["Age"].max()),
+    (
+        int(df["Age"].min()),
+        int(df["Age"].max())
+    )
+)
 
-    with col2:
-        st.write("Kolom Dataset:")
-        st.write(df.columns.tolist())
+filtered_df = df[
+    (df["Gender"].isin(gender))
+    & (df["Age"] >= age_range[0])
+    & (df["Age"] <= age_range[1])
+]
 
-    # Statistik deskriptif
-    st.subheader("Statistik Deskriptif")
-    st.dataframe(df.describe())
+# ==========================
+# HEADER
+# ==========================
+st.title("📊 Mall Customer Dashboard")
+st.markdown("Dashboard Analisis Pelanggan Mall")
 
-    # Visualisasi umur
-    st.subheader("Distribusi Umur Pelanggan")
-    fig, ax = plt.subplots()
-    ax.hist(df["Age"], bins=10)
-    ax.set_xlabel("Umur")
-    ax.set_ylabel("Jumlah")
-    st.pyplot(fig)
+# ==========================
+# KPI
+# ==========================
+col1, col2, col3, col4 = st.columns(4)
 
-    # Scatter Plot
-    st.subheader("Income vs Spending Score")
-    fig2, ax2 = plt.subplots()
-    ax2.scatter(df["Annual_Income_(k$)"], df["Spending_Score"])
-    ax2.set_xlabel("Annual Income (k$)")
-    ax2.set_ylabel("Spending Score")
-    st.pyplot(fig2)
-
-    # Clustering K-Means
-    st.subheader("Clustering Pelanggan (K-Means)")
-
-    k = st.slider("Jumlah Cluster", 2, 10, 5)
-
-    X = df[["Annual_Income_(k$)", "Spending_Score"]]
-
-    kmeans = KMeans(n_clusters=k, random_state=42)
-    df["Cluster"] = kmeans.fit_predict(X)
-
-    fig3, ax3 = plt.subplots()
-    scatter = ax3.scatter(
-        df["Annual_Income_(k$)"],
-        df["Spending_Score"],
-        c=df["Cluster"]
+with col1:
+    st.metric(
+        "Total Customer",
+        len(filtered_df)
     )
 
-    ax3.scatter(
-        kmeans.cluster_centers_[:, 0],
-        kmeans.cluster_centers_[:, 1],
-        marker="X",
-        s=200
+with col2:
+    st.metric(
+        "Rata-rata Umur",
+        round(filtered_df["Age"].mean(),1)
     )
 
-    ax3.set_xlabel("Annual Income (k$)")
-    ax3.set_ylabel("Spending Score")
-    ax3.set_title("Hasil Clustering Pelanggan")
+with col3:
+    st.metric(
+        "Rata-rata Income",
+        round(filtered_df["Annual Income"].mean(),1)
+    )
 
-    st.pyplot(fig3)
+with col4:
+    st.metric(
+        "Rata-rata Spending",
+        round(filtered_df["Spending Score"].mean(),1)
+    )
 
-    st.subheader("Data Hasil Cluster")
-    st.dataframe(df)
+st.divider()
 
-else:
-    st.info("Silakan upload file Mall_Customers.csv terlebih dahulu.")
+# ==========================
+# CHARTS
+# ==========================
+col1, col2 = st.columns(2)
+
+with col1:
+    fig_gender = px.pie(
+        filtered_df,
+        names="Gender",
+        title="Distribusi Gender"
+    )
+    st.plotly_chart(fig_gender, use_container_width=True)
+
+with col2:
+    fig_age = px.histogram(
+        filtered_df,
+        x="Age",
+        nbins=15,
+        title="Distribusi Umur"
+    )
+    st.plotly_chart(fig_age, use_container_width=True)
+
+# ==========================
+# INCOME VS SPENDING
+# ==========================
+fig_scatter = px.scatter(
+    filtered_df,
+    x="Annual Income",
+    y="Spending Score",
+    color="Gender",
+    size="Age",
+    title="Income vs Spending Score"
+)
+
+st.plotly_chart(
+    fig_scatter,
+    use_container_width=True
+)
+
+# ==========================
+# K-MEANS CLUSTERING
+# ==========================
+st.subheader("🤖 Customer Segmentation")
+
+k = st.slider(
+    "Jumlah Cluster",
+    2,
+    10,
+    5
+)
+
+X = filtered_df[
+    ["Annual Income",
+     "Spending Score"]
+]
+
+kmeans = KMeans(
+    n_clusters=k,
+    random_state=42,
+    n_init=10
+)
+
+filtered_df["Cluster"] = kmeans.fit_predict(X)
+
+fig_cluster = px.scatter(
+    filtered_df,
+    x="Annual Income",
+    y="Spending Score",
+    color=filtered_df["Cluster"].astype(str),
+    title="K-Means Clustering"
+)
+
+st.plotly_chart(
+    fig_cluster,
+    use_container_width=True
+)
+
+# ==========================
+# DATA TABLE
+# ==========================
+st.subheader("📄 Dataset")
+
+st.dataframe(
+    filtered_df,
+    use_container_width=True
+)
